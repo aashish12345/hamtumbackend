@@ -4,6 +4,7 @@ const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const addressRoutes = require("./routes/addressRoutes");
 const productRoutes = require("./routes/productRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
@@ -19,6 +20,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/addresses", addressRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/contact-us", contactRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use((req, res) => {

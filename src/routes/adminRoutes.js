@@ -12,6 +12,7 @@ const {
 } = require("../controllers/adminController/adminController");
 const { startAdminLogin, resendAdminLoginOtp, verifyAdminLoginOtp, getAdminProfile } = require("../controllers/adminController/adminAuthController");
 const { createAdmin } = require("../controllers/adminController/adminUserController");
+const { listContactMessages } = require("../controllers/adminController/adminContactController");
 const {
   listCategories,
   getCategoryById,
@@ -33,6 +34,7 @@ router.post("/auth/login/resend-otp", resendAdminLoginOtp);
 router.post("/auth/login/verify-otp", verifyAdminLoginOtp);
 router.get("/auth/me", adminAuth, getAdminProfile);
 router.post("/users/admins", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN), createAdmin);
+router.get("/contact-messages", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listContactMessages);
 router.get("/categories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listCategories);
 router.get("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), getCategoryById);
 router.post(
