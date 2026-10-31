@@ -3,6 +3,7 @@ const { adminAuth, requireAdminRole } = require("../middleware/adminAuth");
 const { ADMIN_ROLES } = require("../models/Admin");
 const upload = require("../middleware/upload");
 const {
+  uploadProductMedia,
   createProduct,
   listAdminProducts,
   getAdminProductById,
@@ -14,6 +15,7 @@ const { createAdmin } = require("../controllers/adminController/adminUserControl
 const {
   listCategories,
   getCategoryById,
+  uploadCategoryImage,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -33,6 +35,13 @@ router.get("/auth/me", adminAuth, getAdminProfile);
 router.post("/users/admins", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN), createAdmin);
 router.get("/categories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listCategories);
 router.get("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), getCategoryById);
+router.post(
+  "/categories/media",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  upload.fields([{ name: "image", maxCount: 1 }]),
+  uploadCategoryImage
+);
 router.post("/categories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), createCategory);
 router.put("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), updateCategory);
 router.delete("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), deleteCategory);
@@ -41,6 +50,17 @@ router.get("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, re
 router.post("/categories/:categoryId/subcategories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), createSubcategory);
 router.put("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), updateSubcategory);
 router.delete("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), deleteSubcategory);
+
+router.post(
+  "/products/media",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  upload.fields([
+    { name: "image", maxCount: 3 },
+    { name: "video", maxCount: 1 }
+  ]),
+  uploadProductMedia
+);
 
 router.post(
   "/products",

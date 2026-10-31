@@ -21,6 +21,37 @@ function parseNumber(value, fallback = 0) {
   return parsed;
 }
 
+function parseStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+        }
+      } catch (error) {
+        return [];
+      }
+    }
+
+    return trimmed
+      .split(",")
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 function toPublicUrl(keyOrUrl) {
   const value = String(keyOrUrl || "").trim();
   if (!value) {
@@ -94,6 +125,25 @@ function validateProductInput(req) {
     return { error: "name, description, category and subCategory are required" };
   }
 
+  function getMediaFromBody(req) {
+    const imageKeys = parseStringArray(req.body.imageKeys);
+    const imageObjectKeysRaw = parseStringArray(req.body.imageObjectKeys);
+    const imageObjectKeys = imageObjectKeysRaw.length > 0
+      ? imageObjectKeysRaw
+      : imageKeys.map((imageKey) => resolveObjectKey(imageKey, "hamtum/products/images")).filter(Boolean);
+
+    const videoKey = String(req.body.videoKey || "").trim();
+    const videoObjectKeyRaw = String(req.body.videoObjectKey || "").trim();
+    const videoObjectKey = videoObjectKeyRaw || (videoKey ? resolveObjectKey(videoKey, "hamtum/products/videos") : "");
+
+    return {
+      imageKeys,
+      imageObjectKeys,
+      videoKey,
+      videoObjectKey
+    };
+  }
+
   if (Number.isNaN(price) || price < 0) {
     return { error: "price must be a valid positive number" };
   }
@@ -156,15 +206,22 @@ async function createProduct(req, res) {
     return res.status(400).json({ message: validation.error });
   }
 
-  const imageProvided = Boolean(req.files && req.files.image && req.files.image.length > 0);
-  if (!imageProvided) {
-    return res.status(400).json({ message: "Product image is required" });
-  }
-
   try {
     const { imageUploads, videoUpload } = await uploadMediaIfProvided(req);
-    const imageKeys = imageUploads.map((imageUpload) => imageUpload.fileName);
-    const imageObjectKeys = imageUploads.map((imageUpload) => imageUpload.key);
+    const mediaFromBody = getMediaFromBody(req);
+
+    const imageKeys = imageUploads.length > 0
+      ? imageUploads.map((imageUpload) => imageUpload.fileName)
+      : mediaFromBody.imageKeys;
+    const imageObjectKeys = imageUploads.length > 0
+      ? imageUploads.map((imageUpload) => imageUpload.key)
+      : mediaFromBody.imageObjectKeys;
+    const videoKey = videoUpload ? videoUpload.fileName : mediaFromBody.videoKey;
+    const videoObjectKey = videoUpload ? videoUpload.key : mediaFromBody.videoObjectKey;
+
+    if (imageKeys.length < 1) {
+      return res.status(400).json({ message: "Product image is required" });
+    }
 
     const product = await Product.create({
       ...validation.data,
@@ -173,8 +230,8 @@ async function createProduct(req, res) {
       imageObjectKeys,
       imageObjectKey: imageObjectKeys[0] || "",
       imageUrl: [],
-      videoKey: videoUpload ? videoUpload.fileName : "",
-      videoObjectKey: videoUpload ? videoUpload.key : "",
+      videoKey,
+      videoObjectKey,
       videoUrl: ""
     });
 
@@ -225,20 +282,26 @@ async function updateProduct(req, res) {
 
   try {
     const { imageUploads, videoUpload } = await uploadMediaIfProvided(req);
+    const mediaFromBody = getMediaFromBody(req);
 
     Object.assign(product, validation.data);
-    if (imageUploads.length > 0) {
-      const imageKeys = imageUploads.map((imageUpload) => imageUpload.fileName);
-      const imageObjectKeys = imageUploads.map((imageUpload) => imageUpload.key);
+    const bodyHasImageKeys = mediaFromBody.imageKeys.length > 0;
+    if (imageUploads.length > 0 || bodyHasImageKeys) {
+      const imageKeys = imageUploads.length > 0
+        ? imageUploads.map((imageUpload) => imageUpload.fileName)
+        : mediaFromBody.imageKeys;
+      const imageObjectKeys = imageUploads.length > 0
+        ? imageUploads.map((imageUpload) => imageUpload.key)
+        : mediaFromBody.imageObjectKeys;
       product.imageKeys = imageKeys;
       product.imageKey = imageKeys[0] || "";
       product.imageObjectKeys = imageObjectKeys;
       product.imageObjectKey = imageObjectKeys[0] || "";
       product.imageUrl = [];
     }
-    if (videoUpload) {
-      product.videoKey = videoUpload.fileName;
-      product.videoObjectKey = videoUpload.key;
+    if (videoUpload || mediaFromBody.videoKey) {
+      product.videoKey = videoUpload ? videoUpload.fileName : mediaFromBody.videoKey;
+      product.videoObjectKey = videoUpload ? videoUpload.key : mediaFromBody.videoObjectKey;
       product.videoUrl = "";
     }
 
@@ -251,6 +314,36 @@ async function updateProduct(req, res) {
   } catch (error) {
     console.error("Product update failed", error);
     return res.status(500).json({ message: error.message || "Failed to update product" });
+  }
+}
+
+async function uploadProductMedia(req, res) {
+  const imageFiles = req.files && req.files.image && req.files.image.length > 0 ? req.files.image : [];
+  const videoFiles = req.files && req.files.video && req.files.video.length > 0 ? req.files.video : [];
+
+  if (imageFiles.length < 1 && videoFiles.length < 1) {
+    return res.status(400).json({ message: "At least one image or video file is required" });
+  }
+
+  try {
+    const { imageUploads, videoUpload } = await uploadMediaIfProvided(req);
+    const imageKeys = imageUploads.map((imageUpload) => imageUpload.fileName);
+    const imageObjectKeys = imageUploads.map((imageUpload) => imageUpload.key);
+
+    return res.status(200).json({
+      message: "Media uploaded successfully",
+      media: {
+        imageKeys,
+        imageObjectKeys,
+        imageUrls: imageUploads.map((imageUpload) => imageUpload.url),
+        videoKey: videoUpload ? videoUpload.fileName : "",
+        videoObjectKey: videoUpload ? videoUpload.key : "",
+        videoUrl: videoUpload ? videoUpload.url : ""
+      }
+    });
+  } catch (error) {
+    console.error("Media upload failed", error);
+    return res.status(500).json({ message: error.message || "Failed to upload media" });
   }
 }
 
@@ -269,6 +362,7 @@ async function deleteProduct(req, res) {
 }
 
 module.exports = {
+  uploadProductMedia,
   createProduct,
   listAdminProducts,
   getAdminProductById,
