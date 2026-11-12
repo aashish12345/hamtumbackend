@@ -1,20 +1,22 @@
 const crypto = require("crypto");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const env = require("../config/env");
+const constants = require("../constant");
 
 let s3Client;
-
+const AWS_DETAILS = constants?.AWS.AWS_DETAILS;
 function getS3Client() {
   if (s3Client) {
     return s3Client;
   }
+  
 
-  if (!env.awsRegion || !env.awsS3Bucket || !env.awsAccessKeyId || !env.awsSecretAccessKey) {
+  if (!AWS_DETAILS.AWS_REGION || !AWS_DETAILS.S3BucketName || !env.awsAccessKeyId || !env.awsSecretAccessKey) {
     throw new Error("AWS S3 is not configured. Please set AWS credentials and bucket in backend .env");
   }
 
   s3Client = new S3Client({
-    region: env.awsRegion,
+    region: AWS_DETAILS.AWS_REGION,
     credentials: {
       accessKeyId: env.awsAccessKeyId,
       secretAccessKey: env.awsSecretAccessKey
@@ -37,7 +39,7 @@ async function uploadFileToS3({ fileBuffer, contentType, originalName, folderPre
 
   await client.send(
     new PutObjectCommand({
-      Bucket: env.awsS3Bucket,
+      Bucket: AWS_DETAILS.S3BucketName,
       Key: key,
       Body: fileBuffer,
       ContentType: contentType
@@ -47,7 +49,7 @@ async function uploadFileToS3({ fileBuffer, contentType, originalName, folderPre
   return {
     key,
     fileName,
-    url: `https://${env.awsS3Bucket}.s3.${env.awsRegion}.amazonaws.com/${key}`
+    url: `https://${AWS_DETAILS.S3BucketName}.s3.${AWS_DETAILS.AWS_REGION}.amazonaws.com/${key}`
   };
 }
 
