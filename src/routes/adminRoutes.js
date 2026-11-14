@@ -8,23 +8,38 @@ const {
   listAdminProducts,
   getAdminProductById,
   updateProduct,
-  deleteProduct
+  deleteProduct,
 } = require("../controllers/adminController/adminController");
-const { startAdminLogin, resendAdminLoginOtp, verifyAdminLoginOtp, getAdminProfile } = require("../controllers/adminController/adminAuthController");
-const { createAdmin } = require("../controllers/adminController/adminUserController");
-const { listContactMessages } = require("../controllers/adminController/adminContactController");
+
+const {
+  updateCategoryHasIsShowOnHome,
+} = require("../controllers/adminController/adminCategoryController");
+
+const {
+  startAdminLogin,
+  resendAdminLoginOtp,
+  verifyAdminLoginOtp,
+  getAdminProfile,
+} = require("../controllers/adminController/adminAuthController");
+const {
+  createAdmin,
+} = require("../controllers/adminController/adminUserController");
+const {
+  listContactMessages,
+} = require("../controllers/adminController/adminContactController");
 const {
   listCategories,
   getCategoryById,
   uploadCategoryImage,
   createCategory,
   updateCategory,
+  updateCategorySortOrder,
   deleteCategory,
   listSubcategories,
   getSubcategoryById,
   createSubcategory,
   updateSubcategory,
-  deleteSubcategory
+  deleteSubcategory,
 } = require("../controllers/adminController/adminCategoryController");
 
 const router = express.Router();
@@ -33,25 +48,97 @@ router.post("/auth/login/start", startAdminLogin);
 router.post("/auth/login/resend-otp", resendAdminLoginOtp);
 router.post("/auth/login/verify-otp", verifyAdminLoginOtp);
 router.get("/auth/me", adminAuth, getAdminProfile);
-router.post("/users/admins", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN), createAdmin);
-router.get("/contact-messages", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listContactMessages);
-router.get("/categories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listCategories);
-router.get("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), getCategoryById);
+router.post(
+  "/users/admins",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN),
+  createAdmin,
+);
+router.get(
+  "/contact-messages",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  listContactMessages,
+);
+router.get(
+  "/categories",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  listCategories,
+);
+router.get(
+  "/categories/:categoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  getCategoryById,
+);
 router.post(
   "/categories/media",
   adminAuth,
   requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
   upload.fields([{ name: "image", maxCount: 1 }]),
-  uploadCategoryImage
+  uploadCategoryImage,
 );
-router.post("/categories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), createCategory);
-router.put("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), updateCategory);
-router.delete("/categories/:categoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), deleteCategory);
-router.get("/categories/:categoryId/subcategories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listSubcategories);
-router.get("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), getSubcategoryById);
-router.post("/categories/:categoryId/subcategories", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), createSubcategory);
-router.put("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), updateSubcategory);
-router.delete("/categories/:categoryId/subcategories/:subcategoryId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), deleteSubcategory);
+router.post(
+  "/categories",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  createCategory,
+);
+router.put(
+  "/categories/:categoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  updateCategory,
+);
+router.patch(
+  "/categories/:categoryId/sort-order",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  updateCategorySortOrder,
+);
+router.delete(
+  "/categories/:categoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  deleteCategory,
+);
+router.patch(
+  "/categories/:categoryId/is-show-on-home",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  updateCategoryHasIsShowOnHome,
+);
+router.get(
+  "/categories/:categoryId/subcategories",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  listSubcategories,
+);
+router.get(
+  "/categories/:categoryId/subcategories/:subcategoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  getSubcategoryById,
+);
+router.post(
+  "/categories/:categoryId/subcategories",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  createSubcategory,
+);
+router.put(
+  "/categories/:categoryId/subcategories/:subcategoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  updateSubcategory,
+);
+router.delete(
+  "/categories/:categoryId/subcategories/:subcategoryId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  deleteSubcategory,
+);
 
 router.post(
   "/products/media",
@@ -59,9 +146,9 @@ router.post(
   requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
   upload.fields([
     { name: "image", maxCount: 3 },
-    { name: "video", maxCount: 1 }
+    { name: "video", maxCount: 1 },
   ]),
-  uploadProductMedia
+  uploadProductMedia,
 );
 
 router.post(
@@ -70,22 +157,37 @@ router.post(
   requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
   upload.fields([
     { name: "image", maxCount: 3 },
-    { name: "video", maxCount: 1 }
+    { name: "video", maxCount: 1 },
   ]),
-  createProduct
+  createProduct,
 );
-router.get("/products", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), listAdminProducts);
-router.get("/products/:productId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), getAdminProductById);
+router.get(
+  "/products",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  listAdminProducts,
+);
+router.get(
+  "/products/:productId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  getAdminProductById,
+);
 router.put(
   "/products/:productId",
   adminAuth,
   requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
   upload.fields([
     { name: "image", maxCount: 3 },
-    { name: "video", maxCount: 1 }
+    { name: "video", maxCount: 1 },
   ]),
-  updateProduct
+  updateProduct,
 );
-router.delete("/products/:productId", adminAuth, requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN), deleteProduct);
+router.delete(
+  "/products/:productId",
+  adminAuth,
+  requireAdminRole(ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN),
+  deleteProduct,
+);
 
 module.exports = router;

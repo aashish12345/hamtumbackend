@@ -16,6 +16,7 @@ const categoryListSchema = new mongoose.Schema(
     imageObjectKey: { type: String, trim: true, default: "" },
     imageUrl: { type: String, trim: true, default: "" },
     sortOrder: { type: Number, default: 0 },
+    isShowOnHome: { type: Boolean, default: false },
     subcategories: { type: [subCategorySchema], default: [] }
   },
   { timestamps: true }

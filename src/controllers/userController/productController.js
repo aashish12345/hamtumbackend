@@ -40,20 +40,44 @@ function resolveObjectKey(rawKeyOrUrl, folderPrefix) {
 }
 
 function resolveImageObjectKeys(productObject) {
-  if (Array.isArray(productObject.imageObjectKeys) && productObject.imageObjectKeys.length > 0) {
+  if (
+    Array.isArray(productObject.imageObjectKeys) &&
+    productObject.imageObjectKeys.length > 0
+  ) {
     return productObject.imageObjectKeys;
   }
 
-  if (Array.isArray(productObject.imageKeys) && productObject.imageKeys.length > 0) {
-    return productObject.imageKeys.map((imageKey) => resolveObjectKey(imageKey, "hamtum/products/images"));
+  if (
+    Array.isArray(productObject.imageKeys) &&
+    productObject.imageKeys.length > 0
+  ) {
+    return productObject.imageKeys.map((imageKey) =>
+      resolveObjectKey(imageKey, "hamtum/products/images"),
+    );
   }
 
-  if (Array.isArray(productObject.imageUrl) && productObject.imageUrl.length > 0) {
-    return productObject.imageUrl.map((imageUrl) => resolveObjectKey(imageUrl, "hamtum/products/images"));
+  if (
+    Array.isArray(productObject.imageUrl) &&
+    productObject.imageUrl.length > 0
+  ) {
+    return productObject.imageUrl.map((imageUrl) =>
+      resolveObjectKey(imageUrl, "hamtum/products/images"),
+    );
   }
 
-  if (productObject.imageObjectKey || productObject.imageKey || productObject.imageUrl) {
-    return [resolveObjectKey(productObject.imageObjectKey || productObject.imageKey || productObject.imageUrl, "hamtum/products/images")];
+  if (
+    productObject.imageObjectKey ||
+    productObject.imageKey ||
+    productObject.imageUrl
+  ) {
+    return [
+      resolveObjectKey(
+        productObject.imageObjectKey ||
+          productObject.imageKey ||
+          productObject.imageUrl,
+        "hamtum/products/images",
+      ),
+    ];
   }
 
   return [];
@@ -61,20 +85,49 @@ function resolveImageObjectKeys(productObject) {
 
 function normalizeProduct(product) {
   const productObject = product.toObject();
-  const normalizedName = String(productObject.name || productObject.title || "").trim();
+  const normalizedName = String(
+    productObject.name || productObject.title || "",
+  ).trim();
   const imageObjectKeys = resolveImageObjectKeys(productObject);
 
   return {
     ...productObject,
     name: normalizedName,
-    imageUrl: imageObjectKeys.map((imageObjectKey) => toPublicUrl(imageObjectKey)).filter(Boolean),
+    imageUrl: imageObjectKeys
+      .map((imageObjectKey) => toPublicUrl(imageObjectKey))
+      .filter(Boolean),
     videoUrl: toPublicUrl(
-      resolveObjectKey(productObject.videoObjectKey || productObject.videoKey || productObject.videoUrl, "hamtum/products/videos")
-    )
+      resolveObjectKey(
+        productObject.videoObjectKey ||
+          productObject.videoKey ||
+          productObject.videoUrl,
+        "hamtum/products/videos",
+      ),
+    ),
   };
 }
 
-function buildProductFilter(query = {}) {
+function parsePriceFilterValue(rawValue, fieldName) {
+  const normalized = String(rawValue ?? "").trim();
+  if (!normalized) {
+    return { hasValue: false, value: 0, error: "" };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { hasValue: false, value: 0, error: `${fieldName} must be a non-negative number.` };
+  }
+
+  return { hasValue: true, value: parsed, error: "" };
+}
+
+function getEffectivePriceExpression() {
+  return {
+    $cond: [{ $eq: ["$isOffer", true] }, "$offerPrice", "$price"],
+  };
+}
+
+function buildBaseProductFilter(query = {}) {
   const category = String(query.category || "").trim();
   const search = String(query.search || "").trim();
   const filter = {};
@@ -90,7 +143,7 @@ function buildProductFilter(query = {}) {
       { title: { $regex: escapedSearch, $options: "i" } },
       { description: { $regex: escapedSearch, $options: "i" } },
       { category: { $regex: escapedSearch, $options: "i" } },
-      { subCategory: { $regex: escapedSearch, $options: "i" } }
+      { subCategory: { $regex: escapedSearch, $options: "i" } },
     ];
   }
 
@@ -98,83 +151,166 @@ function buildProductFilter(query = {}) {
 }
 
 async function listProducts(req, res) {
-  const filter = buildProductFilter(req.query);
+  const baseFilter = buildBaseProductFilter(req.query);
+  const minPriceResult = parsePriceFilterValue(req.query.minPrice, "minPrice");
+  const maxPriceResult = parsePriceFilterValue(req.query.maxPrice, "maxPrice");
+  if (minPriceResult.error) {
+    return res.status(400).json({ message: minPriceResult.error });
+  }
+  if (maxPriceResult.error) {
+    return res.status(400).json({ message: maxPriceResult.error });
+  }
+  if (
+    minPriceResult.hasValue &&
+    maxPriceResult.hasValue &&
+    minPriceResult.value > maxPriceResult.value
+  ) {
+    return res
+      .status(400)
+      .json({ message: "minPrice cannot be greater than maxPrice." });
+  }
+
+  const filter = { ...baseFilter };
+  const effectivePriceExpression = getEffectivePriceExpression();
+  const priceConditions = [];
+  if (minPriceResult.hasValue) {
+    priceConditions.push({ $gte: [effectivePriceExpression, minPriceResult.value] });
+  }
+  if (maxPriceResult.hasValue) {
+    priceConditions.push({ $lte: [effectivePriceExpression, maxPriceResult.value] });
+  }
+  if (priceConditions.length === 1) {
+    filter.$expr = priceConditions[0];
+  } else if (priceConditions.length > 1) {
+    filter.$expr = { $and: priceConditions };
+  }
 
   const limitValue = Number.parseInt(String(req.query.limit || "").trim(), 10);
   const skipValue = Number.parseInt(String(req.query.skip || "").trim(), 10);
-  const limit = Number.isFinite(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : null;
+  const limit =
+    Number.isFinite(limitValue) && limitValue > 0
+      ? Math.min(limitValue, 100)
+      : null;
   const skip = Number.isFinite(skipValue) && skipValue > 0 ? skipValue : 0;
+
+  const priceRangeAggregation = await Product.aggregate([
+    { $match: baseFilter },
+    {
+      $group: {
+        _id: null,
+        minPrice: { $min: effectivePriceExpression },
+        maxPrice: { $max: effectivePriceExpression },
+      },
+    },
+  ]);
+  const availablePriceRange = priceRangeAggregation[0] || {};
 
   const query = Product.find(filter).sort({ createdAt: -1 }).skip(skip);
   if (limit) {
     query.limit(limit);
   }
 
-  const products = await query;
+  const [products, total] = await Promise.all([
+    query,
+    Product.countDocuments(filter),
+  ]);
   const transformedProducts = products.map(normalizeProduct);
+  const resolvedLimit = limit || transformedProducts.length;
+  const hasMore = skip + transformedProducts.length < total;
   return res.status(200).json({
     products: transformedProducts,
     pagination: {
-      limit: limit || transformedProducts.length,
-      skip
-    }
+      limit: resolvedLimit,
+      skip,
+      total,
+      hasMore,
+      nextSkip: skip + transformedProducts.length,
+    },
+    priceRange: {
+      min: Number.isFinite(availablePriceRange.minPrice)
+        ? availablePriceRange.minPrice
+        : 0,
+      max: Number.isFinite(availablePriceRange.maxPrice)
+        ? availablePriceRange.maxPrice
+        : 0,
+    },
   });
 }
 
 async function getDashboardData(req, res) {
-  const perCategoryLimitValue = Number.parseInt(String(req.query.perCategoryLimit || "").trim(), 10);
-  const perCategoryLimit = Number.isFinite(perCategoryLimitValue) && perCategoryLimitValue > 0
-    ? Math.min(perCategoryLimitValue, 20)
-    : 10;
+  const perCategoryLimitValue = Number.parseInt(
+    String(req.query.perCategoryLimit || "").trim(),
+    10,
+  );
+  const perCategoryLimit =
+    Number.isFinite(perCategoryLimitValue) && perCategoryLimitValue > 0
+      ? Math.min(perCategoryLimitValue, 20)
+      : 10;
 
   const [products, categories] = await Promise.all([
     Product.find({}).sort({ createdAt: -1 }),
-    CategoryList.find({}).sort({ sortOrder: 1, name: 1 })
+    CategoryList.find({}).sort({ sortOrder: 1, name: 1 }),
   ]);
 
   const normalizedProducts = products.map(normalizeProduct);
   const groupedProducts = new Map();
+  const categoryDocMap = new Map();
+  const showOnHomeCategoryNames = [];
+
+  categories.forEach((category) => {
+    const name = String(category.name || "").trim();
+    if (name) {
+      categoryDocMap.set(name, category);
+      if (category.isShowOnHome === true) {
+        showOnHomeCategoryNames.push(name);
+      }
+    }
+  });
 
   normalizedProducts.forEach((product) => {
-    const categoryName = String(product.category || "").trim() || "Others";
+    const categoryName = String(product.category || "").trim();
+    if (!categoryName) {
+      return;
+    }
+
     const grouped = groupedProducts.get(categoryName) || [];
     grouped.push(product);
     groupedProducts.set(categoryName, grouped);
   });
 
-  const orderedCategoryNames = [];
-  categories.forEach((category) => {
-    const name = String(category.name || "").trim();
-    if (name) {
-      orderedCategoryNames.push(name);
-    }
-  });
-  groupedProducts.forEach((_, categoryName) => {
-    if (!orderedCategoryNames.includes(categoryName)) {
-      orderedCategoryNames.push(categoryName);
-    }
-  });
+  const orderedCategoryNames = Array.from(categoryDocMap.keys());
 
   const categoryCards = orderedCategoryNames.map((categoryName) => {
     const productsByCategory = groupedProducts.get(categoryName) || [];
-    const categoryDoc = categories.find((category) => String(category.name || "").trim() === categoryName);
+    const categoryDoc = categoryDocMap.get(categoryName);
     const categoryImage = categoryDoc
-      ? toPublicUrl(resolveObjectKey(categoryDoc.imageObjectKey || categoryDoc.imageKey || categoryDoc.imageUrl, "hamtum/categories/images"))
+      ? toPublicUrl(
+          resolveObjectKey(
+            categoryDoc.imageObjectKey ||
+              categoryDoc.imageKey ||
+              categoryDoc.imageUrl,
+            "hamtum/categories/images",
+          ),
+        )
       : productsByCategory[0]?.imageUrl?.[0] || "";
     return {
+      _id: categoryDoc?._id,
       name: categoryName,
+      description: categoryDoc?.description || "",
       itemCount: productsByCategory.length,
-      imageUrl: categoryImage
+      imageUrl: categoryImage,
+      subcategories: categoryDoc?.subcategories || [],
+      sortOrder: categoryDoc?.sortOrder || 0,
     };
   });
 
-  const sections = orderedCategoryNames
+  const sections = showOnHomeCategoryNames
     .map((categoryName) => {
       const productsByCategory = groupedProducts.get(categoryName) || [];
       return {
         category: categoryName,
         totalItems: productsByCategory.length,
-        products: productsByCategory.slice(0, perCategoryLimit)
+        products: productsByCategory.slice(0, perCategoryLimit),
       };
     })
     .filter((section) => section.totalItems > 0);
@@ -182,7 +318,7 @@ async function getDashboardData(req, res) {
   return res.status(200).json({
     categories: categoryCards,
     sections,
-    perCategoryLimit
+    perCategoryLimit,
   });
 }
 
@@ -205,5 +341,5 @@ async function getProductById(req, res) {
 module.exports = {
   listProducts,
   getDashboardData,
-  getProductById
+  getProductById,
 };

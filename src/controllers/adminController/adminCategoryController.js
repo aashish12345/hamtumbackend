@@ -7,6 +7,40 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
+function parseSortOrder(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return { value: 0, error: "" };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return { value: 0, error: "Sort order must be a non-negative integer" };
+  }
+
+  return { value: parsed, error: "" };
+}
+
+function parseBooleanFlag(value, fieldName) {
+  if (value === undefined || value === null || value === "") {
+    return { value: false, error: "", provided: false };
+  }
+
+  if (typeof value === "boolean") {
+    return { value, error: "", provided: true };
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return { value: true, error: "", provided: true };
+  }
+  if (normalized === "false" || normalized === "0") {
+    return { value: false, error: "", provided: true };
+  }
+
+  return { value: false, error: `${fieldName} must be a boolean`, provided: true };
+}
+
 function equalsIgnoreCase(left, right) {
   return normalizeText(left).toLowerCase() === normalizeText(right).toLowerCase();
 }
@@ -58,7 +92,7 @@ function normalizeCategoryForResponse(categoryDoc) {
 }
 
 async function listCategories(req, res) {
-  const categories = await CategoryList.find({}).sort({ createdAt: -1 });
+  const categories = await CategoryList.find({}).sort({ sortOrder: 1, name: 1, createdAt: -1 });
   return res.status(200).json({ categories: categories.map(normalizeCategoryForResponse) });
 }
 
@@ -90,9 +124,17 @@ function getCategoryImageFromBody(req) {
 async function createCategory(req, res) {
   const name = normalizeText(req.body.name);
   const description = normalizeText(req.body.description);
+  const sortOrderResult = parseSortOrder(req.body.sortOrder);
+  const isShowOnHomeResult = parseBooleanFlag(req.body.isShowOnHome, "isShowOnHome");
   const imageFromBody = getCategoryImageFromBody(req);
   if (!name) {
     return res.status(400).json({ message: "Category name is required" });
+  }
+  if (sortOrderResult.error) {
+    return res.status(400).json({ message: sortOrderResult.error });
+  }
+  if (isShowOnHomeResult.error) {
+    return res.status(400).json({ message: isShowOnHomeResult.error });
   }
   const duplicateCategory = await CategoryList.findOne({
     $expr: {
@@ -107,6 +149,8 @@ async function createCategory(req, res) {
   const category = await CategoryList.create({
     name,
     description,
+    sortOrder: sortOrderResult.value,
+    isShowOnHome: isShowOnHomeResult.value,
     imageKey: imageFromBody.imageKey,
     imageObjectKey: imageFromBody.imageObjectKey,
     imageUrl: ""
@@ -118,18 +162,17 @@ async function createCategory(req, res) {
   });
 }
 
-async function updateCategory(req, res) {
+async function updateCategoryHasIsShowOnHome(req, res) {
   const categoryId = normalizeText(req.params.categoryId);
-  const name = normalizeText(req.body.name);
-  const description = normalizeText(req.body.description);
-  const imageFromBody = getCategoryImageFromBody(req);
+  const hasIsShowOnHome = Object.prototype.hasOwnProperty.call(req.body || {}, "isShowOnHome");
+  const isShowOnHomeResult = parseBooleanFlag(req.body.isShowOnHome, "isShowOnHome");
 
   if (!isValidObjectId(categoryId)) {
     return res.status(400).json({ message: "Invalid category id" });
   }
 
-  if (!name) {
-    return res.status(400).json({ message: "Category name is required" });
+  if (hasIsShowOnHome && isShowOnHomeResult.error) {
+    return res.status(400).json({ message: isShowOnHomeResult.error });
   }
 
   const category = await CategoryList.findById(categoryId);
@@ -137,19 +180,73 @@ async function updateCategory(req, res) {
     return res.status(404).json({ message: "Category not found" });
   }
 
-  const duplicateCategory = await CategoryList.findOne({
-    _id: { $ne: category._id },
-    $expr: {
-      $eq: [{ $toLower: "$name" }, name.toLowerCase()]
-    }
-  });
-
-  if (duplicateCategory) {
-    return res.status(409).json({ message: "Category with this name already exists" });
+  if (hasIsShowOnHome) {
+    category.isShowOnHome = isShowOnHomeResult.value;
+    await category.save();
   }
 
-  category.name = name;
-  category.description = description;
+  return res.status(200).json({
+    message: "Category updated successfully",
+    category: normalizeCategoryForResponse(category)
+  });
+}
+
+async function updateCategory(req, res) {
+  const categoryId = normalizeText(req.params.categoryId);
+  const hasName = Object.prototype.hasOwnProperty.call(req.body || {}, "name");
+  const hasDescription = Object.prototype.hasOwnProperty.call(req.body || {}, "description");
+  const hasSortOrder = Object.prototype.hasOwnProperty.call(req.body || {}, "sortOrder");
+  const hasIsShowOnHome = Object.prototype.hasOwnProperty.call(req.body || {}, "isShowOnHome");
+  const name = normalizeText(req.body.name);
+  const description = normalizeText(req.body.description);
+  const sortOrderResult = parseSortOrder(req.body.sortOrder);
+  const isShowOnHomeResult = parseBooleanFlag(req.body.isShowOnHome, "isShowOnHome");
+  const imageFromBody = getCategoryImageFromBody(req);
+
+  if (!isValidObjectId(categoryId)) {
+    return res.status(400).json({ message: "Invalid category id" });
+  }
+
+  if (hasName && !name) {
+    return res.status(400).json({ message: "Category name is required" });
+  }
+  if (hasSortOrder && sortOrderResult.error) {
+    return res.status(400).json({ message: sortOrderResult.error });
+  }
+  if (hasIsShowOnHome && isShowOnHomeResult.error) {
+    return res.status(400).json({ message: isShowOnHomeResult.error });
+  }
+
+  const category = await CategoryList.findById(categoryId);
+  if (!category) {
+    return res.status(404).json({ message: "Category not found" });
+  }
+
+  if (hasName) {
+    const duplicateCategory = await CategoryList.findOne({
+      _id: { $ne: category._id },
+      $expr: {
+        $eq: [{ $toLower: "$name" }, name.toLowerCase()]
+      }
+    });
+
+    if (duplicateCategory) {
+      return res.status(409).json({ message: "Category with this name already exists" });
+    }
+  }
+
+  if (hasName) {
+    category.name = name;
+  }
+  if (hasDescription) {
+    category.description = description;
+  }
+  if (hasSortOrder) {
+    category.sortOrder = sortOrderResult.value;
+  }
+  if (hasIsShowOnHome) {
+    category.isShowOnHome = isShowOnHomeResult.value;
+  }
   if (imageFromBody.imageKey) {
     category.imageKey = imageFromBody.imageKey;
     category.imageObjectKey = imageFromBody.imageObjectKey;
@@ -159,6 +256,31 @@ async function updateCategory(req, res) {
 
   return res.status(200).json({
     message: "Category updated successfully",
+    category: normalizeCategoryForResponse(category)
+  });
+}
+
+async function updateCategorySortOrder(req, res) {
+  const categoryId = normalizeText(req.params.categoryId);
+  if (!isValidObjectId(categoryId)) {
+    return res.status(400).json({ message: "Invalid category id" });
+  }
+
+  const sortOrderResult = parseSortOrder(req.body.sortOrder);
+  if (sortOrderResult.error) {
+    return res.status(400).json({ message: sortOrderResult.error });
+  }
+
+  const category = await CategoryList.findById(categoryId);
+  if (!category) {
+    return res.status(404).json({ message: "Category not found" });
+  }
+
+  category.sortOrder = sortOrderResult.value;
+  await category.save();
+
+  return res.status(200).json({
+    message: "Category sort order updated successfully",
     category: normalizeCategoryForResponse(category)
   });
 }
@@ -360,10 +482,12 @@ module.exports = {
   uploadCategoryImage,
   createCategory,
   updateCategory,
+  updateCategorySortOrder,
   deleteCategory,
   listSubcategories,
   getSubcategoryById,
   createSubcategory,
   updateSubcategory,
-  deleteSubcategory
+  deleteSubcategory,
+  updateCategoryHasIsShowOnHome
 };

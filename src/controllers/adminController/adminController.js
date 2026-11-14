@@ -171,9 +171,9 @@ function validateProductInput(req) {
       : toBoolean(req.body.inStock);
   const quantity = Math.max(0, parseNumber(req.body.quantity, 0));
 
-  if (!name || !description || !category || !subCategory) {
+  if (!name || !description || !category ) {
     return {
-      error: "name, description, category and subCategory are required",
+      error: "name, description, and category are required",
     };
   }
 
@@ -197,7 +197,6 @@ function validateProductInput(req) {
       offerPrice: isOffer ? offerPrice : 0,
       inStock,
       quantity,
-      Quantity: quantity,
     },
   };
 }
@@ -284,6 +283,7 @@ async function createProduct(req, res) {
       product: normalizeProductForResponse(product),
     });
   } catch (error) {
+    debugger;
     console.error("Product create failed", error);
     return res
       .status(500)

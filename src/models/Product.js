@@ -6,7 +6,7 @@ const productSchema = new mongoose.Schema(
     title: { type: String, trim: true, default: "" },
     description: { type: String, required: true, trim: true },
     category: { type: String, required: true, trim: true },
-    subCategory: { type: String, required: true, trim: true },
+    subCategory: { type: String, required: false, trim: true },
     price: { type: Number, required: true, min: 0 },
     imageKeys: [{ type: String, trim: true }],
     imageKey: { type: String, trim: true, default: "" },
@@ -20,7 +20,6 @@ const productSchema = new mongoose.Schema(
     isOffer: { type: Boolean, default: false },
     offerPrice: { type: Number, default: 0 },
     quantity: { type: Number, default: 0 },
-    Quantity: { type: Number, default: 0 },
     deliveryTime: { type: String, trim: true, default: "2hr" }
   },
   { timestamps: true }
