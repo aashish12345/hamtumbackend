@@ -7,6 +7,7 @@ const productRoutes = require("./routes/productRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const cartRoutes = require("./routes/cartRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/addresses", addressRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/cart", cartRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/contact-us", contactRoutes);
 app.use("/api/admin", adminRoutes);
 

@@ -22,6 +22,14 @@ function getUnitPrice(product) {
   return product.isOffer ? Number(product.offerPrice || 0) : Number(product.price || 0);
 }
 
+function getAvailableStock(product) {
+  const parsed = Number.parseInt(String(product?.quantity ?? 0).trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 0;
+  }
+  return parsed;
+}
+
 async function getOrCreateCart(userId) {
   let cart = await Cart.findOne({ userId });
   if (!cart) {
@@ -56,13 +64,21 @@ async function buildCartPayload(cart) {
       continue;
     }
 
+    const availableStock = getAvailableStock(product);
+    if (!product.inStock || availableStock < 1) {
+      continue;
+    }
+
+    const quantity = Math.max(
+      1,
+      Math.min(Number(cartItem.quantity || 1), availableStock),
+    );
     validItems.push({
       productId: product._id,
-      quantity: cartItem.quantity,
+      quantity,
     });
 
     const unitPrice = getUnitPrice(product);
-    const quantity = Number(cartItem.quantity || 1);
     responseItems.push({
       productId: product._id,
       quantity,
@@ -74,6 +90,7 @@ async function buildCartPayload(cart) {
         imageUrl: resolveProductImage(product),
         category: product.category || "",
         inStock: Boolean(product.inStock),
+        quantity: availableStock,
         price: Number(product.price || 0),
         isOffer: Boolean(product.isOffer),
         offerPrice: Number(product.offerPrice || 0),
@@ -125,7 +142,8 @@ async function addCartItem(req, res) {
   if (!product) {
     return res.status(404).json({ message: "Product not found." });
   }
-  if (!product.inStock) {
+  const availableStock = getAvailableStock(product);
+  if (!product.inStock || availableStock < 1) {
     return res.status(400).json({ message: "Product is out of stock." });
   }
 
@@ -134,8 +152,19 @@ async function addCartItem(req, res) {
     (item) => String(item.productId) === String(productId),
   );
   if (existingItem) {
-    existingItem.quantity = Math.min(existingItem.quantity + quantityResult.value, 99);
+    const nextQuantity = existingItem.quantity + quantityResult.value;
+    if (nextQuantity > availableStock) {
+      return res.status(400).json({
+        message: `Only ${availableStock} item(s) available in stock.`,
+      });
+    }
+    existingItem.quantity = nextQuantity;
   } else {
+    if (quantityResult.value > availableStock) {
+      return res.status(400).json({
+        message: `Only ${availableStock} item(s) available in stock.`,
+      });
+    }
     cart.items.push({
       productId,
       quantity: quantityResult.value,
@@ -167,6 +196,20 @@ async function updateCartItemQuantity(req, res) {
   );
   if (!existingItem) {
     return res.status(404).json({ message: "Cart item not found." });
+  }
+
+  const product = await Product.findById(productId);
+  if (!product) {
+    return res.status(404).json({ message: "Product not found." });
+  }
+  const availableStock = getAvailableStock(product);
+  if (!product.inStock || availableStock < 1) {
+    return res.status(400).json({ message: "Product is out of stock." });
+  }
+  if (quantityResult.value > availableStock) {
+    return res.status(400).json({
+      message: `Only ${availableStock} item(s) available in stock.`,
+    });
   }
 
   existingItem.quantity = quantityResult.value;
